@@ -1,0 +1,342 @@
+---
+title: "Probability 04"
+author: "Xueyuan Li"
+date: "2022-09-26"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Introduction
+
+Today we are going to discuss the question that if home field advantage exists, how much of an impact does it have on winning the world series?
+
+The home field advantage is the edge which a team may have when playing a game at its home stadium. For example, it is the edge the Braves may have over the Yankees when the head-to-head match-up is in Atlanta. It is the advantage the Yankees may have when the head-to-head match-up is in New York.
+
+The World Series is a first-to-4-wins match-up between the champions of the American and National Leagues of Major League Baseball. In this assignment, you are going to use simulation and analytic methods to compare the probability of winning the World Series with and without home field advantage.
+
+---
+
+## Background
+
+Setup:
+
+We suppose that the Braves and the Yankees are teams competing in the World Series.
+
+The table below has the two possible schedules for each game of the series. (NYC = New York City, ATL = Atlanta)
+
+| Overall advantage | Game 1 | Game 2 | Game 3 | Game 4 | Game 5 | Game 6 | Game 7 |
+|:---:|:---:|:-----:|:----:|:---:|:---:|:-----:|:-----:|
+|  Braves |   ATL |  ATL    |  NYC   |  NYC  |   NYC |  ATL   | ATL |
+|  Yankees |   NYC |  NYC    |  ATL   |  ATL  |   ATL |  NYC    |  NYC|
+
+
+PB: be the probability that the Braves win a single head-to-head match-up with the Yankees, under the assumption that home field advantage doesn’t exist. 
+
+PBH: denote the probability that the Braves win a single head-to-head match-up with the Yankees as the home team (H for home). 
+
+PBA: denote the probability that the Braves win a single head-to-head match-up with the away team (A for away).
+
+
+|Game location|	No advantage|	Advantage|
+|:---:|:---:|:-----:|
+|ATL	|PB	| PB^H= PB * 1.1|
+|NYC	|PB	| PB^A= 1-(1-PB)*1.1|
+
+---
+
+## Solution
+
+1, Compute analytically the probability that the Braves win the world series when the sequence of game locations is {NYC, NYC, ATL, ATL, ATL, NYC, NYC}. (The code below computes the probability for the alternative sequence of game locations. Note: The code uses data.table syntax, which may be new to you. This is intentional, as a gentle way to introduce data.table.) Calculate the probability with and without home field advantage when PB=0.55. What is the difference in probabilities?
+
+```{r}
+require(dplyr)
+require(data.table)
+library(ggplot2)
+# Get all possible outcomes
+apo <- fread("all-possible-world-series-outcomes.csv")
+
+# Home field indicator
+#hfi <- c(1,1,0,0,0,1,1) #{ATL, ATL, NYC, NYC, NYC, ATL, ATL}
+#hfi<- c(0,0,1,1,1,0,0)   #{NYC, NYC, ATL, ATL, ATL, NYC, NYC}
+
+
+
+analytic_world_ser= function(hfi= c(0,0,1,1,1,0,0),
+                             pb,
+                             advantage_multiplier ){
+  
+  pbh <- pb*advantage_multiplier 
+  pba <- 1 - (1 - pb)*advantage_multiplier  
+  
+ # Calculate the probability of each possible outcome 
+  apo[, p := NA_real_] # Initialize new column in apo to store prob
+for(i in 1:nrow(apo)){
+  prob_game <- rep(1, 7)
+  for(j in 1:7){
+    p_win <- ifelse(hfi[j], pbh, pba)
+    prob_game[j] <- case_when(
+        apo[i,j,with=FALSE] == "W" ~ p_win
+      , apo[i,j,with=FALSE] == "L" ~ 1 - p_win
+      , TRUE ~ 1
+    )
+  }
+  apo[i, p := prod(prob_game)] # Data.table syntax
+}
+
+# Sanity check: does sum(p) == 1?
+apo[, sum(p)] # This is data.table notation
+
+# Probability of overall World Series outcomes
+apo[, sum(p), overall_outcome]
+
+
+}
+
+with_adv<-analytic_world_ser(pb=0.55,advantage_multiplier=1.1) #with advantage
+with_adv
+without_adv<-analytic_world_ser(pb=0.55,advantage_multiplier=1.0) #without advantage
+without_adv
+with_adv[[1,2]]-without_adv[[1,2]]
+
+#analytic_world_ser(pb=0.45) #change pb=0.45 and hange 0.55 to pb
+```
+
+W:prob of B win WS
+
+L:prob of B loss WS
+
+**We set PB=0.55, and separately discuss the probability with and without home field advantage. The first table is with advantage, and the second is without advantage. We can find that the probability without advantage is about 0.6082878, and the probability with advantage is about 0.604221. And the difference between with and without advantage is -0.004066825. **
+
+---
+
+2, Calculate the same probabilities as the previous question by simulation.
+```{r}
+sim.world.series=function(hfi= c(0,0,1,1,1,0,0),
+                             pb = 0.55,
+                             advantage_multiplier){
+  pbh <- pb*advantage_multiplier 
+  pba <- 1 - (1 - pb)*advantage_multiplier  
+  
+  num_win=0
+  for(i in 1:7){
+    if(hfi[i]){  #if hfi=1, return true
+      p_win=pbh
+    }else{    #if hfi=0, return false
+      p_win=pba
+    }
+    game_outcome=rbinom(1,1,p_win)
+    num_win=num_win +game_outcome  #initial num=0, if win add 1 to the num
+    
+    if(num_win==4 |(i-num_win)==4)  #if num_win=4, or num_loss=4, break
+      break
+  }
+  return(num_win==4)
+  
+}
+#if sim.world.series return 0, lose; if return 1, win
+
+```
+
+```{r}
+#without advantage
+sim_ws_result=NA
+for(k in 1:10000){
+  sim_ws_result[k]=sim.world.series(advantage_multiplier = 1.0)
+}
+
+aa<-mean(sim_ws_result) #prob of win
+aa
+1-aa #prob of lose
+```
+```{r}
+#with advantage
+sim_ws_result=NA
+for(k in 1:10000){
+  sim_ws_result[k]=sim.world.series(advantage_multiplier = 1.1)
+}
+
+bb<-mean(sim_ws_result)#prob of win
+bb
+1-bb #prob of lose
+```
+
+```{r}
+bb-aa
+```
+
+**We calculate the same probabilities as the previous question by simulation, and find that with advantage the probability of Braves winning is 0.6041, and the probability of losing is about 0.3959. And without advantage, the prob Braves win WS is 0.6123. And the difference of with and without advantage is 0.0068.**
+
+---
+
+3, What is the absolute and relative error for your simulation in the previous question?
+```{r}
+#with advantage
+analytic_out=analytic_world_ser(pb=0.55, advantage_multiplier = 1.1)
+abs_error= abs(mean(sim_ws_result) - analytic_out$V1[1])  
+#first variable name is V1, first row[1]
+abs_error          
+relative_error=abs_error/analytic_out$V1[1]
+relative_error
+```
+```{r}
+#without advantage
+analytic_out=analytic_world_ser(pb=0.55, advantage_multiplier = 1.0)
+abs_error= abs(mean(sim_ws_result) - analytic_out$V1[1])  
+#first variable name is V1, first row[1]
+abs_error          
+relative_error=abs_error/analytic_out$V1[1]
+relative_error
+```
+
+**We use the function that we made from below question to calculate the absolute and relative error. And we can calculate the absolute error and relative error. They always change.**
+
+---
+
+4, Does the difference in probabilities (with vs without home field advantage) depend on PB? (Generate a plot to answer this question.)
+
+First we need to generate a plot, x-axis is PB, and y-axis is the difference between with and without home field advantage_multiplier.
+
+```{r}
+analytic_world_ser= function(hfi= c(0,0,1,1,1,0,0),
+                             pb,
+                             advantage_multiplier){
+
+    pbh <- pb*advantage_multiplier 
+    pba <- 1 - (1 - pb)*advantage_multiplier
+
+ # Calculate the probability of each possible outcome 
+  apo[, p := NA_real_] # Initialize new column in apo to store prob
+for(i in 1:nrow(apo)){
+  prob_game <- rep(1, 7)
+  for(j in 1:7){
+    p_win <- ifelse(hfi[j], pbh, pba)
+    prob_game[j] <- case_when(
+        apo[i,j,with=FALSE] == "W" ~ p_win
+      , apo[i,j,with=FALSE] == "L" ~ 1 - p_win
+      , TRUE ~ 1
+    )
+  }
+  apo[i, p := prod(prob_game)] # Data.table syntax
+}
+
+# Sanity check: does sum(p) == 1?
+apo[, sum(p)] # This is data.table notation
+
+# Probability of overall World Series outcomes
+aa<-apo[, sum(p), overall_outcome]
+  
+
+}
+
+
+
+pb=seq(0.5,1.0,by=0.01)
+y<-rep(NA, length(pb))
+ 
+for(i in 1:length(pb)) {
+  ad<-analytic_world_ser(pb=pb[i],
+                         advantage_multiplier = 1.1)[[1,2]]
+    
+  no_ad<- analytic_world_ser(pb=pb[i],
+                             advantage_multiplier = 1.0)[[1,2]]
+    
+    y[i]<-round(ad-no_ad,6)
+} 
+
+aa<-data.frame(pb,y)  
+
+```
+
+```{r}
+ggplot(aa)+
+  geom_point(aes(x=pb, y))+
+  labs(
+    x="PB",
+    y="Difference between with and without advantage_multiplier",
+    title="If the difference with and withou advantage depends on PB"
+    
+  )
+```
+
+**We write a loop to show each PB and their matching differences between with and without home field advantage. We can find that as the PB is increasing, the difference between with and without advantage firsty increasing, but after pb=0.7, it going down. But we can still say the difference in probabilities (with vs without home field advantage) depend on PB.**
+
+---
+
+5, Does the difference in probabilities (with vs without home field advantage) depend on the advantage factor? (The advantage factor in PBH and PBA is the 1.1 multiplier that results in a 10% increase for the home team. Generate a plot to answer this question.)
+
+For each advantage_multiplier, we need to compute the probability of wining WS with and without home field advantage.
+x-axis is advantage_multiplier
+y-aixs is the difference in prob of wins between with and without home field advantage.
+
+```{r}
+# Calculate the probability of each possible outcome 
+ analytic_world_ser= function(hfi= c(0,0,1,1,1,0,0),
+                             pb=0.55,
+                             advantage_multiplier ){
+  
+  pbh <- pb*advantage_multiplier 
+  pba <- 1 - (1 - pb)*advantage_multiplier  
+  
+ # Calculate the probability of each possible outcome 
+  apo[, p := NA_real_] # Initialize new column in apo to store prob
+for(i in 1:nrow(apo)){
+  prob_game <- rep(1, 7)
+  for(j in 1:7){
+    p_win <- ifelse(hfi[j], pbh, pba)
+    prob_game[j] <- case_when(
+        apo[i,j,with=FALSE] == "W" ~ p_win
+      , apo[i,j,with=FALSE] == "L" ~ 1 - p_win
+      , TRUE ~ 1
+    )
+  }
+  apo[i, p := prod(prob_game)] # Data.table syntax
+}
+
+# Sanity check: does sum(p) == 1?
+apo[, sum(p)] # This is data.table notation
+
+# Probability of overall World Series outcomes
+apo[, sum(p), overall_outcome]
+
+
+ }
+
+```
+
+```{r}
+advantage_multiplier=seq(1.0,2.0,by=0.01)
+ad<-rep(NA, length(advantage_multiplier))
+ 
+for(i in 1:length(advantage_multiplier)) {
+  with_ad<-analytic_world_ser(advantage_multiplier = advantage_multiplier[i])[[1,2]]
+  ad[i]=round(with_ad,6)
+
+} 
+
+ad
+
+no_ad<- analytic_world_ser(advantage_multiplier=1.0)[[1,2]]
+no_ad
+
+diff<-ad-no_ad
+
+aa<-data.frame(advantage_multiplier,diff)  
+```
+
+```{r}
+ggplot(aa)+
+  geom_point(aes(x=advantage_multiplier, y=diff))+
+  labs(
+    y="Difference between with and without advantage_multiplier",
+    title="If the difference with and withou advantage depends on advantage factor"
+  )
+
+```
+
+**We set the pb=0.55, and change the advantage_multiplier in sequence of 1.0-2.0. We can find that as the advantage_multiplier increasing, the difference between with and without advantage is decreasing from 0.0 to about -0.20. So the difference in probabilities (with vs without home field advantage) depends on the advantage factor**
+
+---
+
+## Conclusion
+So we discuss the probability of Braves wins WS with and without home field advantage. We can find that advantage does impact the probability of winning. In the questing 4 and 5, we discuss the difference in probabilities with and without home field advantage depends on both pb and the advantage factor.
